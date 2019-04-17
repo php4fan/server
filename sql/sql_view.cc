@@ -788,6 +788,16 @@ static File_option view_parameters[]=
   FILE_OPTIONS_STRING}
 };
 
+
+static File_option view_md5_parameters[]=
+{
+
+ {{ C_STRING_WITH_LEN("md5")}, 0, FILE_OPTIONS_FIXSTRING},
+ {{NullS, 0}, 0, FILE_OPTIONS_STRING}
+};
+
+
+
 static LEX_STRING view_file_type[]= {{(char*) STRING_WITH_LEN("VIEW") }};
 
 
@@ -1131,7 +1141,31 @@ err:
   DBUG_RETURN(error);
 }
 
+/**
+  Check is TABLE_LEST and SHARE match
+  @param[in]  view                TABLE_LIST of the view
+  @param[in]  share               Share object of view
 
+  @return false on error or misspatch
+*/
+
+bool mariadb_view_version_get(TABLE_SHARE *share)
+{
+  DBUG_ASSERT(share->is_view);
+
+  if (!(share->tabledef_version.str=
+        (uchar*) alloc_root(&share->mem_root, VIEW_MD5_LEN + 1)))
+    return TRUE;
+  share->tabledef_version.length= VIEW_MD5_LEN;
+
+  DBUG_ASSERT(share->view_def != NULL);
+  if (share->view_def->parse((uchar *) &share->tabledef_version, NULL,
+                             view_md5_parameters, 1,
+                             &file_parser_dummy_hook))
+    return TRUE;
+  DBUG_ASSERT(share->tabledef_version.length == VIEW_MD5_LEN);
+  return FALSE;
+}
 
 /**
   read VIEW .frm and create structures
@@ -1193,6 +1227,10 @@ bool mysql_make_view(THD *thd, TABLE_SHARE *share, TABLE_LIST *table,
     mysql_derived_reinit(thd, NULL, table);
 
     DEBUG_SYNC(thd, "after_cached_view_opened");
+    if (!share->tabledef_version.length)
+    {
+      mariadb_view_version_get(share);
+    }
     DBUG_RETURN(0);
   }
 
@@ -1246,6 +1284,18 @@ bool mysql_make_view(THD *thd, TABLE_SHARE *share, TABLE_LIST *table,
                                       required_view_parameters,
                                       &file_parser_dummy_hook)))
     goto end;
+  if (!share->tabledef_version.length)
+  {
+    share->tabledef_version.str= (const uchar *)
+                                 memdup_root(&share->mem_root,
+                                             (const void *)table->md5.str,
+                                             (share->tabledef_version.length=
+                                              table->md5.length));
+  }
+  if (!table->tabledef_version.length)
+  {
+    table->set_view_def_version(&table->md5);
+  }
 
   /*
     check old format view .frm

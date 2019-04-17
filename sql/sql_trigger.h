@@ -331,4 +331,14 @@ bool mysql_create_or_drop_trigger(THD *thd, TABLE_LIST *tables, bool create);
 extern const char * const TRG_EXT;
 extern const char * const TRN_EXT;
 
+
+/**
+  Make time compatible with MySQL 5.7 trigger time.
+*/
+
+inline ulonglong make_trigger_time(my_time_t time, ulong time_sec_part)
+{
+  return ((ulonglong) time)*100 + time_sec_part/10000;
+}
+
 #endif /* SQL_TRIGGER_INCLUDED */

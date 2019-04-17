@@ -2146,6 +2146,10 @@ struct TABLE_LIST
     to view with SQL SECURITY DEFINER)
   */
   Security_context *security_ctx;
+  uchar tabledef_version_buf[MY_UUID_SIZE > VIEW_MD5_LEN ?
+                             MY_UUID_SIZE + 1 : VIEW_MD5_LEN + 1];
+  LEX_CUSTRING tabledef_version;
+
   /*
     This view security context (non-zero only for views with
     SQL SECURITY DEFINER)
@@ -2442,12 +2446,7 @@ struct TABLE_LIST
 
     @sa check_and_update_table_version()
   */
-  inline bool is_table_ref_id_equal(TABLE_SHARE *s) const
-  {
-    return (m_table_ref_type == s->get_table_ref_type() &&
-            m_table_ref_version == s->get_table_ref_version());
-  }
-
+  bool is_table_ref_id_equal(THD *thd, TABLE_SHARE *s);
   /**
     Record the value of metadata version of the corresponding
     table definition cache element in this parse tree node.
@@ -2462,6 +2461,26 @@ struct TABLE_LIST
   {
     m_table_ref_type= table_ref_type_arg;
     m_table_ref_version= table_ref_version_arg;
+  }
+
+  void set_table_id(TABLE_SHARE *s)
+  {
+    set_table_ref_id(s);
+    set_tabledef_version(s);
+  }
+
+  void set_tabledef_version(TABLE_SHARE *s)
+  {
+    if (!tabledef_version.length && s->tabledef_version.length)
+    {
+      DBUG_ASSERT(s->tabledef_version.length <
+                  sizeof(tabledef_version_buf));
+      tabledef_version.str= tabledef_version_buf;
+      memcpy(tabledef_version_buf, s->tabledef_version.str,
+             (tabledef_version.length= s->tabledef_version.length));
+      // safety
+      tabledef_version_buf[tabledef_version.length]= 0;
+    }
   }
 
   /* Set of functions returning/setting state of a derived table/view. */
@@ -2590,6 +2609,12 @@ struct TABLE_LIST
     }
   }
 
+  inline void set_view_def_version(LEX_STRING *md5)
+  {
+    m_table_ref_type= TABLE_REF_VIEW;
+    tabledef_version.str= (const uchar *) md5->str;
+    tabledef_version.length= md5->length;
+  }
 private:
   bool prep_check_option(THD *thd, uint8 check_opt_type);
   bool prep_where(THD *thd, Item **conds, bool no_where_clause);

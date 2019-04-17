@@ -37,6 +37,8 @@
 #ifdef WITH_WSREP
 #include "debug_sync.h"
 #endif /* WITH_WSREP */
+#include <my_time.h>
+#include <mysql_time.h>
 
 LEX_STRING *make_lex_string(LEX_STRING *lex_str, const char* str, uint length,
                             MEM_ROOT *mem_root)
@@ -888,6 +890,10 @@ bool Table_triggers_list::create_trigger(THD *thd, TABLE_LIST *tables,
   if (!(trigger= new (&table->mem_root) Trigger(this, 0)))
     goto err_without_cleanup;
 
+  /* Time with 2 decimals, like in MySQL 5.7 */
+  trigger->create_time= make_trigger_time(thd->query_start(),
+                                          thd->query_start_sec_part());
+
   /* Create trigger_name.TRN file to ensure trigger name is unique */
   if (sql_create_definition_file(NULL, &trigname_file, &trigname_file_type,
                                  (uchar*)&trigname, trigname_file_parameters))
@@ -896,8 +902,6 @@ bool Table_triggers_list::create_trigger(THD *thd, TABLE_LIST *tables,
   /* Populate the trigger object */
 
   trigger->sql_mode= thd->variables.sql_mode;
-  /* Time with 2 decimals, like in MySQL 5.7 */
-  trigger->create_time= ((ulonglong) thd->query_start())*100 + thd->query_start_sec_part()/10000;
   build_trig_stmt_query(thd, tables, stmt_query, &trigger_definition,
                         &trigger->definer, trg_definer_holder);
 
@@ -929,7 +933,21 @@ bool Table_triggers_list::create_trigger(THD *thd, TABLE_LIST *tables,
 
   if (!sql_create_definition_file(NULL, &file, &triggers_file_type,
                                   (uchar*)this, triggers_file_parameters))
+  {
+    // delay if needed to be sure that time of creation is unique
+    for (;;)
+    {
+      my_hrtime_t hrtime= my_hrtime();
+      ulonglong current_time= make_trigger_time(hrtime_to_my_time(hrtime),
+                                                hrtime_sec_part(hrtime));
+      if (trigger->create_time == current_time)
+        pthread_yield();
+      else
+        break;
+    }
+
     DBUG_RETURN(false);
+  }
 
 err_with_cleanup:
   /* Delete .TRN file */

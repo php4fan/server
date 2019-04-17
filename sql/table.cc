@@ -8460,6 +8460,53 @@ bool TABLE_LIST::is_with_table()
 }
 
 
+bool TABLE_LIST::is_table_ref_id_equal(THD* thd, TABLE_SHARE *s)
+{
+  enum enum_table_ref_type tp= s->get_table_ref_type();
+  if (m_table_ref_type == tp)
+  {
+    bool res= m_table_ref_version == s->get_table_ref_version();
+
+    /*
+      If definition is different check content version
+    */
+    if (tabledef_version.length &&
+        tabledef_version.length == s->tabledef_version.length &&
+        memcmp(tabledef_version.str, s->tabledef_version.str,
+               tabledef_version.length) == 0)
+    {
+      if (table && table->triggers)
+      {
+
+        ulonglong stmt_create= thd->create_time;
+        if (stmt_create)
+          for(uint i= 0; i < TRG_EVENT_MAX; i++)
+            for (uint j= 0; j < TRG_ACTION_MAX; j++)
+            {
+              Trigger *tr=
+                table->triggers->get_trigger((trg_event_type)i,
+                                             (trg_action_time_type)j);
+              if (tr)
+                if (stmt_create <= tr->create_time)
+                {
+                  set_tabledef_version(s);
+                  return FALSE;
+                }
+            }
+      }
+      set_table_id(s);
+      return TRUE;
+    }
+    else
+      tabledef_version.length= 0;
+    return res;
+  }
+  else
+    set_tabledef_version(s);
+  return FALSE;
+}
+
+
 uint TABLE_SHARE::actual_n_key_parts(THD *thd)
 {
   return use_ext_keys &&

@@ -4177,6 +4177,10 @@ bool Prepared_statement::prepare(const char *packet, uint packet_len)
   Query_arena *old_stmt_arena;
   DBUG_ENTER("Prepared_statement::prepare");
   DBUG_ASSERT(m_sql_mode == thd->variables.sql_mode);
+
+  // The same format as for triggers to compare
+  create_time= make_trigger_time(thd->query_start(),
+                                 thd->query_start_sec_part());
   /*
     If this is an SQLCOM_PREPARE, we also increase Com_prepare_sql.
     However, it seems handy if com_stmt_prepare is increased always,
