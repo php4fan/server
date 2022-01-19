@@ -16812,7 +16812,8 @@ ha_innobase::cmp_ref(
 		}
 
 		if (result) {
-
+                        if (key_part->key_part_flag & HA_REVERSE_SORT)
+                                result = -result;
 			return(result);
 		}
 
