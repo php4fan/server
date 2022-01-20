@@ -1572,6 +1572,7 @@ public:
                                       TMP_TABLE_PARAM *tmp_table_param,
                                       bool with_cleanup);
   bool vcol_fix_exprs(THD *thd);
+  bool vcol_cleanup_exprs(THD *thd);
 };
 
 

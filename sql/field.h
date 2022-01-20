@@ -684,6 +684,7 @@ public:
   }
   bool fix_expr(THD *thd);
   bool fix_session_expr(THD *thd);
+  bool cleanup_session_expr();
   bool fix_session_expr_for_read(THD *thd, Field *field);
   bool fix_and_check_expr(THD *thd, TABLE *table);
   inline bool is_equal(const Virtual_column_info* vcol) const;

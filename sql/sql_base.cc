@@ -746,6 +746,7 @@ void close_thread_tables(THD *thd)
     /* Table might be in use by some outer statement. */
     DBUG_PRINT("tcache", ("table: '%s'  query_id: %lu",
                           table->s->table_name.str, (ulong) table->query_id));
+    table->vcol_cleanup_exprs(thd);
     if (thd->locked_tables_mode <= LTM_LOCK_TABLES ||
         table->query_id == thd->query_id)
     {

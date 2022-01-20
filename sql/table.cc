@@ -2847,8 +2847,6 @@ bool Virtual_column_info::fix_session_expr(THD *thd)
   if (!(flags & (VCOL_TIME_FUNC|VCOL_SESSION_FUNC)))
     return false;
 
-  if (expr->walk(&Item::cleanup_excluding_fields_processor, 0, 0))
-    return true;
   DBUG_ASSERT(!expr->fixed);
   if (expr->walk(&Item::change_context_processor, 0, thd->lex->current_context()))
     return true;
@@ -2858,6 +2856,18 @@ bool Virtual_column_info::fix_session_expr(THD *thd)
     return true;
   return false;
 }
+
+
+bool Virtual_column_info::cleanup_session_expr()
+{
+  if (!(flags & (VCOL_TIME_FUNC|VCOL_SESSION_FUNC)))
+    return false;
+
+  if (expr->walk(&Item::cleanup_excluding_fields_processor, 0, 0))
+    return true;
+  return false;
+}
+
 
 
 class Vcol_expr_context
@@ -2916,9 +2926,6 @@ bool Vcol_expr_context::init()
   lex.current_context()->select_lex= tl->select_lex;
   lex.sql_command= old_lex->sql_command;
 
-  thd->set_n_backup_active_arena(expr_arena, &backup_arena);
-  thd->stmt_arena= expr_arena;
-
   if (tl->security_ctx)
     thd->security_ctx= tl->security_ctx;
 
@@ -2933,8 +2940,6 @@ Vcol_expr_context::~Vcol_expr_context()
   if (!inited)
     return;
   table->grant.want_privilege= old_want_privilege;
-  thd->restore_active_arena(expr_arena, &backup_arena);
-  thd->stmt_arena= stmt_backup;
   thd->pop_internal_handler();
   end_lex_with_single_table(thd, table, old_lex);
   table->map= old_map;
@@ -2985,6 +2990,38 @@ bool TABLE::vcol_fix_exprs(THD *thd)
 
   for (Virtual_column_info **cc= check_constraints; cc && *cc; cc++)
     if ((*cc)->fix_session_expr(thd))
+      goto end;
+
+  result= false;
+
+end:
+  DBUG_ASSERT(!result || thd->get_stmt_da()->is_error());
+  return result;
+}
+
+
+bool TABLE::vcol_cleanup_exprs(THD *thd)
+{
+  if (pos_in_table_list->placeholder() || !s->vcols_need_refixing)
+    return false;
+
+  Vcol_expr_context expr_ctx(thd, this);
+  if (expr_ctx.init())
+    return true;
+
+  bool result= true;
+
+  for (Field **vf= vfield; vf && *vf; vf++)
+    if ((*vf)->vcol_info->cleanup_session_expr())
+      goto end;
+
+  for (Field **df= default_field; df && *df; df++)
+    if ((*df)->default_value &&
+        (*df)->default_value->cleanup_session_expr())
+      goto end;
+
+  for (Virtual_column_info **cc= check_constraints; cc && *cc; cc++)
+    if ((*cc)->cleanup_session_expr())
       goto end;
 
   result= false;
