@@ -3024,11 +3024,6 @@ bool TABLE::vcol_cleanup_exprs(THD *thd)
   List_iterator<Virtual_column_info> it(vcol_session_cleanup_list);
   bool result= false;
 
-  // FIXME: is it needed here?
-  Vcol_expr_context expr_ctx(thd, this);
-  if (expr_ctx.init())
-    return true;
-
   while (Virtual_column_info *vcol= it++)
     result|= vcol->cleanup_session_expr();
 
